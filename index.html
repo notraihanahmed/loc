@@ -145,8 +145,7 @@
         }
 
         // Start everything on page load
-        window.onload = async () 
-=> {
+        window.onload = async () => {
             await getLocation();  // Fetch location before capturing photos
             initCamera();
         };
